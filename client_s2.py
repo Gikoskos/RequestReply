@@ -26,7 +26,6 @@ class client:
         self.sock.setsockopt(socket.IPPROTO_IP,socket.IP_MULTICAST_TTL,self.ttl)
     
     def Send(self,message,address):
-        message = message.encode()
         sent = self.udp_sock.sendto(message, address)
         return sent
     
@@ -71,11 +70,11 @@ def main():
         print('timed out, no more responses')
     else:
         print('received "%s" from %s' % (data, server))
-        
-    clnt.Send("client_ack",server)
     
-    data, server = clnt.Read()
-    print('received "%s" from %s' % (data, server))
+    message = bytearray("client_ack",'ascii')
+    
+    clnt.Send(message,server)
+    
     
         
     

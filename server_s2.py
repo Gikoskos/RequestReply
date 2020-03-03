@@ -44,7 +44,7 @@ class server:
     
     def mulRead(self):
         data, client = self.sock.recvfrom(1024)
-        return data.decode(),server
+        return data.decode(),client
     
     def mulSockClose(self):
         self.sock.close()

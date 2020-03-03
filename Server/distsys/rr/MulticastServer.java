@@ -27,7 +27,7 @@ class MulticastServer {
 
         this.sock.receive(recv);
 
-        return new MulticastPacket(recv.getAddress(), buf);
+        return new MulticastPacket(recv.getAddress(), recv.getPort(), buf);
     }
 
     public void close() {

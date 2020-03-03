@@ -6,7 +6,7 @@ import java.util.regex.*;
 
 public class RequestListener extends Thread {
     private static final Pattern mcastHeaderPattern = Pattern.compile("^RR_CLIENT_(\\d{1,4})");
-    private static final int RR_PORT = 6777;
+    private int RR_PORT = 10002;
     private final MulticastServer mcastServer;
     private Matcher mcastHeaderMatcher;
 
@@ -26,7 +26,7 @@ public class RequestListener extends Thread {
                     System.out.println("VALID MESSAGE BY " + mpack.getAddress().getHostName() + ": " + mpack.getString());
                 } else {
                     System.out.println("INVALID MESSAGE BY " + mpack.getAddress().getHostName() + ": " + mpack.getString());
-                    mpack = null;
+                    //mpack = null;
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -36,23 +36,45 @@ public class RequestListener extends Thread {
         return mpack;
     }
 
-    private void sendACK(InetAddress addr) throws IOException {
+    private void sendACK(InetAddress addr, DatagramSocket socket) throws IOException {
         String s = "RR_SERVER_ACK";
         byte[] msg = s.getBytes();
-        DatagramSocket socket = new DatagramSocket(RR_PORT);
-        DatagramPacket packet = new DatagramPacket(msg, msg.length, addr, RR_PORT);
+        System.out.println("ONSEND");
+        
+        DatagramPacket packet = new DatagramPacket(msg, msg.length, addr, this.RR_PORT);
 
         socket.send(packet);
+    }
+
+    private void recvACK(InetAddress addr, DatagramSocket socket) throws IOException {
+        byte[] buf = new byte[128];
+        System.out.println("ONRCV");
+        DatagramPacket recv = new DatagramPacket(buf, buf.length);
+
+        socket.receive(recv);
+        System.out.println(new String(recv.getData(), "US-ASCII"));
     }
 
     public void run() {
         while (true) {
             MulticastPacket mpack = this.getValidMulticastPacket();
-
-            this.mcastHeaderMatcher.group(1);
+            DatagramSocket socket = null;
             try {
-                this.sendACK(mpack.getAddress());
+                socket = new DatagramSocket(6676);
             } catch (Exception e) {}
+
+            this.RR_PORT = mpack.getPort();
+
+            //this.mcastHeaderMatcher.group(1);
+            try {
+                this.sendACK(mpack.getAddress(), socket);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            try {
+                this.recvACK(mpack.getAddress(), socket);
+            } catch (Exception e) { e.printStackTrace();}
         }
     }
 }
