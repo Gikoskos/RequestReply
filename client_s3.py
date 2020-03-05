@@ -5,9 +5,8 @@ from queue import Queue
 import socket
 import struct
 import random
-import time
 import threading
-import logging
+
 
 
 class client:
@@ -27,9 +26,6 @@ class client:
        
         #create  udp socket
         self.udp_sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-        
-        #set timeout for udp_socket
-        self.sock.settimeout(2)
         
         #bind udp socket
         self.udp_sock.bind(('',0))
@@ -61,8 +57,8 @@ class client:
         del self.udp_sock
     
 
-
-clt_buffer = Queue(maxsize=15)
+MAX_SIZE = 15
+clt_buffer = []
 multicast_group = ('226.1.1.1',10000);
 clnt = client(multicast_group)
 reply_buffer = []
@@ -75,11 +71,36 @@ def find_reply(key):
             buffer = reply_buffer[i].get("buffer")
             lenght = reply_buffer[i].get("lenght")
             #reply_sem.release()
-            return lenght,buffer
+            return lenght,buffer,i
     #reply_sem.release()
-    return -1,-1
+    return -1,-1,-1
+
+def findRequest(key):
+    
+    #reply_sem.acquire()
+    for i in range(len(reply_buffer)):
+        if(clt_buffer[i].get("key") == key):
+            return i
+    #reply_sem.release()
+    return -1
         
         
+def findDuplicateSend(svcid,length,buffer):
+    for i in range(len(clt_buffer)):
+        if(clt_buffer[i].get("svcid") == svcid):
+            if(clt_buffer[i].get("buffer") == buffer):
+                if(clt_buffer[i].get("len") == length):
+                    return True
+    return False
+
+def findDuplicateRec(key,length,buffer):
+    for i in range(len(reply_buffer)):
+        if(reply_buffer[i].get("key") == key):
+            if(reply_buffer[i].get("buffer") == buffer):
+                if(reply_buffer[i].get("lenght") == length):
+                    return True
+    
+    return False
 
 
 class Request:
@@ -88,10 +109,14 @@ class Request:
         self.buffer = buffer
         self.length = length
         self.key =  random.randint(1,1000000000)
+        self.sem= threading.Semaphore(0)
         
     def asDict(self):
-        return{'key':self.key, 'svcid':self.svcid, 'buffer':self.buffer, 'len':self.length }
+        return{'key':self.key, 'svcid':self.svcid, 'buffer':self.buffer, 'len':self.length , 'sem':self.sem}
     
+    def getKey(self):
+        return(self.key)
+        
 def zip_b(key,length,buffer):
     
     new_key = key.to_bytes(4,byteorder="big")
@@ -125,7 +150,7 @@ def multicastProtocol(message):
     clnt.multiSend(message)
     print("waiting to receive")
     # Look for responses from all recipients
-    while(counter <  3):
+    while(counter <  2):
         try:
             data, server = clnt.multiRead()
         except socket.timeout:
@@ -139,32 +164,11 @@ def multicastProtocol(message):
     if(counter == 3):
         return -1
     
-    counter = 0
-    reply_sem.acquire()
-    clnt.Send("client_ack".encode(),server)
-    reply_sem.release()
-    
-    #look for responce to client_ack
-    while(counter <  3):
-        check = sem.acquire(blocking=True, timeout=2)
-        if(check == False):
-            print('timed out, no more responses')
-            counter = counter + 1
-            clnt.Send("client_ack".encode(),server)
-        else:
-            break
-    
-    if(counter == 3):
-        return -1
-    
-    print('closing socket')
-    clnt.mulsockClose()
-    
     return server
 
 
 
-def sendWithAck(message,server):
+def sendWithAck(message,server,sem):
     
     counter = 0
     reply_sem.acquire()
@@ -172,13 +176,14 @@ def sendWithAck(message,server):
     reply_sem.release()
     
     #look for responce to mesage
+    print(sem)
     
-    while(counter <  3):
+    while(counter <  2):
         check = sem.acquire(blocking=True, timeout=2)
         if(check == False):
             print('timed out, no more responses')
             counter = counter + 1
-            clnt.Send("client_ack".encode(),server)
+            clnt.Send(message,server)
         else:
             break
     
@@ -200,21 +205,27 @@ def sendRequest(svcid,buffer,length):
     
     req = Request(svcid,buffer,length)
     
-    if(clt_buffer.full()):
+    if(len(clt_buffer) == MAX_SIZE):
         return -1
     
-    clt_buffer.put(req.asDict())
+    if(findDuplicateSend(svcid,length,buffer) == True):
+        return -1
     
-    send_msg = zip_b(req.asDict().get('key'),length,buffer)
+    clt_buffer.append(req.asDict())
+    
+    send_msg = zip_b(req.getKey(),length,buffer)
     
     server = multicastProtocol(multicast_request)
     
     if(server == -1):
         return-1
     
-    ack = sendWithAck(send_msg,server)
+    ack = sendWithAck(send_msg,server,req.asDict().get("sem"))
+    
+    if(ack == -1):
+        return -1
         
-    return req.asDict().get('key')
+    return req.getKey()
 
 
 
@@ -230,39 +241,58 @@ class readThread(threading.Thread):
             #print(sem._value)
             try:
                 new_data = data.decode()
-                #print(new_data)
-                if(new_data == "Ack"):
-                    #print("aaaaaaaaaaa")
-                    #reply_sem.release()
-                    sem.release()
-            except UnicodeDecodeError:
-                print("aaaaaaaaaaa")
-                dict_reply = unzip(data)
-                reply_buffer.append(dict_reply)
-                reply_sem.acquire()
-                clnt.Send("Ack".encode(),server)
-                reply_sem.release()
-#--------------------anzip and in reply buffer-------------------------#
-                #key,data = unzip(data)
+                ack = new_data[0:4]
+                key = int(new_data[4:len(new_data)])
                 
-def getReply(reqid,block):
-    
+                if(ack == "Ack_"):
+                    index = findRequest(key)
+                    sem = clt_buffer[index].get("sem")
+                    sem.release()
+                    
+            except UnicodeDecodeError:
+                dict_reply = unzip(data)
+                if(findDuplicateRec(dict_reply.get("key"),dict_reply.get("lenght"),dict_reply.get("buffer")) == False):
+                    reply_buffer.append(dict_reply)
+                    index = findRequest(dict_reply.get('key'))
+                    clt_buffer.remove(clt_buffer[index])
+                    reply_sem.acquire()
+                    clnt.Send("Ack_recived".encode(),server)
+                    reply_sem.release()
+                else:
+                    clnt.Send("Ack_recieved".encode(),server)
+
+
+def getReply(reqid,block):    
     if(block == True):
         buffer = -1
-        while(buffer == -1):
-            lenght,buffer = find_reply(reqid)
+        while(1):
+            lenght,buffer,index = find_reply(reqid)
+            if(buffer != -1):
+                reply_buffer.remove(reply_buffer[index])
+                break
         return lenght,buffer
     else:
-        lenght,buffer = find_reply(reqid)
+        lenght,buffer,index = find_reply(reqid)
+       
+        if(buffer != -1):
+                reply_buffer.remove(reply_buffer[index])
+        
         return lenght,buffer
 
 
-sem = threading.Semaphore(0)
+
+#sem = threading.Semaphore(0)
 reply_sem = threading.Semaphore(1)
+
 thread = readThread()
 thread.start()
+
 key = sendRequest(44,55376257,8)
-print(key)
-lenght,buffer = getReply(key,True)    
-print(lenght)
-print(buffer)
+
+if(key != -1):
+
+    print(key)
+
+    lenght,buffer = getReply(key,True)    
+    print(lenght)
+    print(buffer)
