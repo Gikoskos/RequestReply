@@ -2,9 +2,9 @@ package distsys.rr;
 
 import java.io.IOException;
 import java.net.*;
+import java.util.Arrays;
 
 class MulticastServer {
-    private static final int DGRAM_LEN = 32;
     private final int port;
     private final String address;
     private InetAddress group;
@@ -22,12 +22,12 @@ class MulticastServer {
     }
 
     public MulticastPacket listen() throws IOException {
-        byte[] buf = new byte[DGRAM_LEN];
+        byte[] buf = new byte[GlobalLimits.DGRAM_LEN];
         DatagramPacket recv = new DatagramPacket(buf, buf.length);
 
         this.sock.receive(recv);
 
-        return new MulticastPacket(recv.getAddress(), recv.getPort(), buf);
+        return new MulticastPacket(recv.getAddress(), recv.getPort(), Arrays.copyOfRange(buf, 0, recv.getLength()));
     }
 
     public void close() {

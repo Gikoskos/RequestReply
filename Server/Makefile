@@ -1,4 +1,4 @@
-SERVER_SRC = distsys/rr/RRServer.java distsys/rr/MulticastServer.java distsys/rr/RequestListener.java 
+SERVER_SRC = distsys/rr/*.java
 
 demo: lib
 	javac -cp ".:./RR.jar" ServerDemo.java

@@ -3,13 +3,13 @@ import java.net.*;
 public class ClientDemo {
     public static void send() {
         try {
-            MulticastSocket s = new MulticastSocket(6789);
-            String msg = "Test testtest";
+            MulticastSocket s = new MulticastSocket();
+            String msg = "RR_CLIENT_550";
             DatagramPacket recv = new DatagramPacket(
                 msg.getBytes(),
                 msg.length(),
-                InetAddress.getByName("228.5.6.7"),
-                6789
+                InetAddress.getByName("226.1.1.1"),
+                10000
             );
 
 
@@ -25,4 +25,3 @@ public class ClientDemo {
         ClientDemo.send();
     }
 }
- 
