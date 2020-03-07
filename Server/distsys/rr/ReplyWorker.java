@@ -1,7 +1,11 @@
 package distsys.rr;
 
 import java.io.IOException;
-import java.net.*;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
+import java.net.SocketTimeoutException;
+import java.nio.ByteBuffer;
 
 class ReplyWorker implements Runnable {
     private static int cnt = 0;
@@ -9,27 +13,33 @@ class ReplyWorker implements Runnable {
     private final DatagramSocket sock;
 
     public ReplyWorker() throws Exception {
-        sock = new DatagramSocket();
+        sock = new DatagramSocket(new InetSocketAddress(0));
         sock.setSoTimeout(GlobalLimits.SOCKET_TIMEOUT);
         id = cnt++;
     }
 
     public void run() {
-        System.out.println("ReplyWorker " + id + " started");
+        Dbg.yellow("ReplyWorker " + id + " started on port " + this.sock.getLocalPort());
         byte[] buffAck = new byte[GlobalLimits.DGRAM_LEN];
+        ReplyData reply;
 
         while (true) {
             try {
-                RRServer.availableReply.acquire();
-            } catch (InterruptedException e) {
+                reply = Queues.replyQueue.take();
+            } catch (Exception e) {
                 e.printStackTrace();
                 break;
             }
 
-            ProtocolPacket packet = PacketBuffer.getPacket(RequestState.REPLIED);
-            byte[] reply = packet.getReplyBuffer();
+            ProtocolPacket packet = PacketBuffer.getPacket(reply.getRequestId());
 
-            DatagramPacket packetReply = new DatagramPacket(reply, reply.length, packet.getAddress(), packet.getPort());
+            Dbg.yellow("ReplyWorker " + id + " running on " + this.sock.getLocalPort());
+            DatagramPacket packetReply = new DatagramPacket(reply.getData(), reply.getData().length, packet.getAddress(), packet.getPort());
+
+            ByteBuffer buff = ByteBuffer.wrap(reply.getData());
+            int int_data = buff.getInt();
+            Dbg.yellow("ReplyWorker " + id + " key = " + reply.getRequestId());
+            packet.serializeReplyBuffer(reply.getData());
 
             for (int i = 0; i < GlobalLimits.SEND_REPLY_TRIES; i++) {
                 try {
@@ -39,24 +49,29 @@ class ReplyWorker implements Runnable {
                     return;
                 }
 
-                DatagramPacket recvAck = new DatagramPacket(buffAck, buffAck.length);
+                DatagramPacket recvAck = new DatagramPacket(
+                    packet.getReplyBuffer(),
+                    packet.getReplyBuffer().length
+                );
 
                 try {
                     this.sock.receive(recvAck);
                 } catch (SocketTimeoutException e) {
-                    System.out.println("ReplyWorker " + id + " ACK for reply timeout");
+                    Dbg.yellow("ReplyWorker " + id + " ACK for reply timeout");
                     continue;
                 } catch (IOException e) {
                     e.printStackTrace();
                     return;
                 }
 
-                System.out.println("ReplyWorker " + id + " got ACK for reply");
+                Dbg.yellow("ReplyWorker " + id + " got ACK for reply on " + this.sock.getLocalPort());
                 break;
             }
 
             //remove in all cases
+            PacketBuffer.wLock();
             PacketBuffer.remove(packet.getPacketId());
+            PacketBuffer.wUnlock();
         }
     }
 }

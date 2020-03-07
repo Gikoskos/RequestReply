@@ -7,9 +7,7 @@ class PacketBuffer {
     private static final ProtocolPacket[] packetBuffer = new ProtocolPacket[GlobalLimits.BUFFER_SIZE];
 
     public static int insert(ProtocolPacket packet) {
-        int id = -1;
-
-        wLock();
+        int id = GlobalLimits.INVALID_PACKET_ID;
 
         for (int i = 0; i < packetBuffer.length; i++) {
             if (packetBuffer[i] == null) {
@@ -17,21 +15,17 @@ class PacketBuffer {
                 packetBuffer[i] = packet;
                 id = i;
                 break;
+            } else if (packetBuffer[i].getNetworkId() == packet.getNetworkId()) {
+                break;
             }
         }
-
-        wUnlock();
 
         return id;
     }
 
     public static void remove(int id) {
         if (id >= 0 && id < packetBuffer.length) {
-            wLock();
-
             packetBuffer[id] = null;
-    
-            wUnlock();
         }
     }
 
@@ -40,7 +34,7 @@ class PacketBuffer {
 
         rLock();
         for (ProtocolPacket packet: packetBuffer) {
-            if (packet.getState() == state) {
+            if (packet != null && packet.getState() == state) {
                 p = packet;
                 break;
             }
@@ -55,7 +49,7 @@ class PacketBuffer {
 
         rLock();
         for (ProtocolPacket packet: packetBuffer) {
-            if (packet.getState() == state && packet.getServiceId() == svcid) {
+            if (packet != null && packet.getState() == state && packet.getServiceId() == svcid) {
                 p = packet;
                 break;
             }
@@ -81,7 +75,6 @@ class PacketBuffer {
         boolean duplicatesExist = false;
         int netid = packet.getNetworkId(), packetid = packet.getPacketId();
 
-        wLock();
         for (int i = 0; i < packetBuffer.length; i++) {
             //check if we have a duplicate
             if (
@@ -101,7 +94,6 @@ class PacketBuffer {
                 break;
             }
         }
-        wUnlock();
 
         return duplicatesExist;
     }

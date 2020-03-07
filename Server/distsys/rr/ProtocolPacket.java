@@ -16,8 +16,9 @@ class ProtocolPacket {
     private byte[] reqbuff, repbuff;
     private int port, networkid, requestlen, packetid;
 
-    public ProtocolPacket(int svcid, InetAddress addr, int port) throws UnsupportedEncodingException {
+    public ProtocolPacket(int svcid, int networkid, InetAddress addr, int port) throws UnsupportedEncodingException {
         this.svcid = svcid;
+        this.networkid = networkid;
         this.addr = addr;
         this.port = port;
         this.state = RequestState.ARRIVED;
@@ -63,16 +64,30 @@ class ProtocolPacket {
         this.packetid = packetid;
     }
 
-    public void deserializeRequestBuffer(byte[] buff) {
+    private static final char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
+    public static String bytesToHex(byte[] bytes) {
+        char[] hexChars = new char[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = HEX_ARRAY[v >>> 4];
+            hexChars[j * 2 + 1] = HEX_ARRAY[v & 0x0F];
+        }
+        return new String(hexChars);
+    }
+
+    public boolean deserializeRequestBuffer(byte[] buff) {
         ByteBuffer buffPacket = ByteBuffer.wrap(buff);
 
+        //System.out.println("Serialized packet = " + bytesToHex(buff));
         buffPacket.order(ByteOrder.BIG_ENDIAN);
-        this.networkid = buffPacket.getInt(0);
         this.requestlen = buffPacket.getInt(4);
+        
+        this.networkid = buffPacket.getInt(0);
 
         this.reqbuff = Arrays.copyOfRange(buff, 8, buff.length);
 
-        System.out.println("Deserialized packet (" + this.networkid + ", " + this.requestlen  + ")");
+        Dbg.green("Deserialized packet (" + this.networkid + ", " + this.requestlen  + ", " + bytesToHex(this.reqbuff) + ")");
+        return true;
     }
 
     public byte[] getRequestBuffer() {
@@ -91,6 +106,6 @@ class ProtocolPacket {
         buffPacket.putInt(buff.length);
         buffPacket.put(buff);
 
-        this.repbuff = buffPacket.array();
+        this.repbuff = Arrays.copyOfRange(buffPacket.array(), 0, buffPacket.array().length);
     }
 }

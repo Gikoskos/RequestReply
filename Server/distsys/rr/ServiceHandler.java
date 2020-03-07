@@ -3,11 +3,12 @@ package distsys.rr;
 import java.util.concurrent.locks.*;
 import java.util.Hashtable;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ArrayBlockingQueue;
 
 class ServiceHandler {
     private static final int[] services = new int[GlobalLimits.MAX_SERVICES];
     private static final ReentrantReadWriteLock services_rwl = new ReentrantReadWriteLock();
-    private static final Hashtable<Integer, Semaphore> unansweredRequests = new Hashtable<Integer, Semaphore>();
+    private static final Hashtable<Integer, ArrayBlockingQueue<RequestData>> unansweredRequests = new Hashtable<Integer, ArrayBlockingQueue<RequestData>>();
     private static int registered_cnt = 0;
 
     public static int register(int svcid) {
@@ -26,16 +27,12 @@ class ServiceHandler {
             return -1;
         }
 
-        services_rwl.writeLock().lock();
-
         services[registered_cnt++] = svcid;
 
-        Semaphore sem = new Semaphore(GlobalLimits.BUFFER_SIZE, true);
-        sem.drainPermits();
+        ArrayBlockingQueue<RequestData> queue = new ArrayBlockingQueue<RequestData>(GlobalLimits.BUFFER_SIZE, true);
 
-        unansweredRequests.put(svcid, sem);
+        unansweredRequests.put(svcid, queue);
 
-        services_rwl.writeLock().unlock();
 
         return 0;
     }
@@ -51,7 +48,6 @@ class ServiceHandler {
             return -1;
         }
 
-        services_rwl.writeLock().lock();
         for (int i = services.length - 1; i >= 0; i--) {
             if (services[i] == svcid) {
                 for (int j = i; j < services.length - 1; j++) {
@@ -63,50 +59,36 @@ class ServiceHandler {
         unansweredRequests.remove(svcid);
         registered_cnt--;
 
-        services_rwl.writeLock().unlock();
-
         return 0;
     }
 
-    public static void releaseServiceRequest(int svcid) {
-        Semaphore sem;
-
-        services_rwl.readLock().lock();
-        sem = unansweredRequests.get(svcid);
-        services_rwl.readLock().unlock();
+    public static void putServiceRequest(int svcid, RequestData data) {
+        ArrayBlockingQueue<RequestData> queue = unansweredRequests.get(svcid);
 
         try {
-            sem.release();
+            queue.put(data);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public static boolean waitForServiceRequest(int svcid) {
-        Semaphore sem;
+    public static RequestData takeServiceRequest(int svcid) {
+        ArrayBlockingQueue<RequestData> queue = unansweredRequests.get(svcid);
+        RequestData data = null;
 
-        services_rwl.readLock().lock();
-        sem = unansweredRequests.get(svcid);
-        services_rwl.readLock().unlock();
-
-        if (sem == null) {
-            return false;
+        if (queue != null) {
+            try {
+                data = queue.take();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
 
-        try {
-            sem.acquire();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
-
-        return true;
+        return data;
     }
 
     public static boolean exists(int svcid) {
         boolean res = false;
-
-        services_rwl.readLock().lock();
 
         for (int service: services) {
              if (service == svcid) {
@@ -114,7 +96,6 @@ class ServiceHandler {
                 break;
             }
         }
-        services_rwl.readLock().unlock();
 
         return res;
     }

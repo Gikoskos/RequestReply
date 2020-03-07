@@ -10,35 +10,63 @@ class RequestWorker implements Runnable {
     private final DatagramSocket sock;
 
     public RequestWorker() throws Exception {
-        sock = new DatagramSocket();
+        sock = new DatagramSocket(new InetSocketAddress(0));
         sock.setSoTimeout(GlobalLimits.SOCKET_TIMEOUT);
         id = cnt++;
 
     }
 
     public void run() {
-        System.out.println("RequestWorker " + id + " started");
+        Dbg.cyan("RequestWorker " + id + " started on " + this.sock.getLocalPort());
         byte[] msgACK = "RR_SERVER_ACK".getBytes();
         byte[] buffReceive = new byte[GlobalLimits.DGRAM_BIG_LEN];
         DatagramPacket dgram = new DatagramPacket(msgACK, msgACK.length);
+        ProtocolPacket arrived;
+        MulticastPacket mpack;
+        int networkId, svcid;
 
         while (true) {
             try {
-                RRServer.availableRequest.acquire();
+                mpack = Queues.multicastPacketQueue.take();
             } catch (InterruptedException e) {
                 e.printStackTrace();
                 break;
             }
-
             
-            ProtocolPacket arrived = PacketBuffer.getPacket(RequestState.ARRIVED);
-            
-            System.out.println("RequestWorker " + id + " assigned job!");
+            networkId = mpack.getNetworkid();
+            svcid = mpack.getSvcid();
+
+            if (ServiceHandler.exists(svcid)) {
+                PacketBuffer.wLock();
 
 
+                try {
+                    arrived = new ProtocolPacket(svcid, networkId, mpack.getAddress(), mpack.getPort());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    PacketBuffer.wUnlock();
+                    continue;
+                }
+
+                if (PacketBuffer.insert(arrived) == GlobalLimits.INVALID_PACKET_ID) {
+                    Dbg.cyan("RequestWorker " + id + " discarded duplicate " + networkId);
+                    PacketBuffer.wUnlock();
+                    continue;
+                }
+
+                PacketBuffer.wUnlock();
+            } else {
+                Dbg.cyan("RequestWorker " + id + " discarded packet " + networkId + " because service " + svcid + " isn't registered");
+                continue;
+            }
+
+            Dbg.cyan("RequestWorker " + id + " assigned job " + arrived.getNetworkId());
+
+
+            Dbg.cyan("RequestWorker " + id + " running on " + this.sock.getLocalPort());
             dgram.setAddress(arrived.getAddress());
             dgram.setPort(arrived.getPort());
-            System.out.println("RequestWorker " + id + " got port " + dgram.getPort());
+            Dbg.cyan("RequestWorker " + id + " got port " + dgram.getPort());
 
             int i;
             for (i = 0; i < GlobalLimits.GET_REQUEST_TRIES; i++) {
@@ -49,7 +77,7 @@ class RequestWorker implements Runnable {
                     e.printStackTrace();
                     break;
                 }
-                System.out.println("RequestWorker " + id + " sent ACK!");
+                Dbg.cyan("RequestWorker " + id + " sent ACK!");
 
                 dgram.setData(buffReceive);
                 dgram.setLength(buffReceive.length);
@@ -57,7 +85,7 @@ class RequestWorker implements Runnable {
                 try {
                     this.sock.receive(dgram);
                 } catch (SocketTimeoutException e) {
-                    System.out.println("RequestWorker " + id + " request timed out!");
+                    Dbg.cyan("RequestWorker " + id + " request timed out!");
                     dgram.setAddress(arrived.getAddress());
                     dgram.setPort(arrived.getPort());
                     dgram.setData(msgACK);
@@ -71,18 +99,22 @@ class RequestWorker implements Runnable {
                 break;
             }
 
+            PacketBuffer.wLock();
             if (i == GlobalLimits.GET_REQUEST_TRIES) {
                 //@TODO: clear buffer
-                System.out.println("RequestWorker " + id + " maxed on timeouts for request!");
+                PacketBuffer.remove(arrived.getPacketId());
+                Dbg.cyan("RequestWorker " + id + " maxed on timeouts for request!");
+                PacketBuffer.wUnlock();
                 continue;
             }
+            
+            PacketBuffer.wUnlock();
 
-            System.out.println("RequestWorker " + id + " received packet with data " + dgram.getLength());
+            Dbg.cyan("RequestWorker " + id + " received packet with data " + dgram.getLength());
 
-            arrived.deserializeRequestBuffer(Arrays.copyOfRange(buffReceive, 0, dgram.getLength()));
 
-            if (PacketBuffer.checkDuplicates(arrived)) {
-                System.out.println("Found duplicate!");
+            if (!arrived.deserializeRequestBuffer(Arrays.copyOfRange(buffReceive, 0, dgram.getLength()))) {
+                Dbg.cyan("RequestWorker " + id + " discards invalid packet " + arrived.getNetworkId());
                 continue;
             }
 
@@ -99,7 +131,8 @@ class RequestWorker implements Runnable {
                 break;
             }
 
-            ServiceHandler.releaseServiceRequest(arrived.getServiceId());
+            ServiceHandler.putServiceRequest(arrived.getServiceId(),
+                new RequestData(arrived.getPacketId(), arrived.getRequestBuffer()));
         }
     }
 }

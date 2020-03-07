@@ -5,17 +5,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 
 public class RRServer {
-    public static final Semaphore availableRequest = new Semaphore(GlobalLimits.BUFFER_SIZE, true);
-    public static final Semaphore availableReply = new Semaphore(GlobalLimits.BUFFER_SIZE, true);
-
     private final RequestListener rListener;
     private final ExecutorService requestPool;
     private final ExecutorService replyPool;
 
     public RRServer(final int multicastPort, final String multicastAddress) throws Exception {
         System.out.println("On RRServer!");
-        availableRequest.drainPermits();
-        availableReply.drainPermits();
 
         this.rListener = new RequestListener(multicastPort, multicastAddress);
 
@@ -47,28 +42,22 @@ public class RRServer {
     }
 
     public RequestData getRequest(int svcid) {
-        if (!ServiceHandler.waitForServiceRequest(svcid)) {
-            return null;
+        RequestData request = null;
+
+        try {
+            request = ServiceHandler.takeServiceRequest(svcid);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
-        ProtocolPacket packet = PacketBuffer.getPacket(RequestState.ARRIVED, svcid);
-
-        if (packet == null) {
-            return null;
-        }
-
-        packet.setState(RequestState.PENDING_REPLY);
-
-        return new RequestData(packet.getPacketId(), packet.getRequestBuffer());
+        return request;
     }
 
     public void sendReply(int reqid, byte[] buf) {
-        ProtocolPacket packet = PacketBuffer.getPacket(reqid);
-
-        if (packet != null) {
-            packet.setState(RequestState.REPLIED);
-            packet.serializeReplyBuffer(buf);
-            availableReply.release();
+        try {
+            Queues.replyQueue.put(new ReplyData(reqid, buf));
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }

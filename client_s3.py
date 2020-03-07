@@ -6,6 +6,7 @@ import socket
 import struct
 import random
 import threading
+import queue
 
 
 #the client class contains all the sockets and send/read utilities
@@ -18,6 +19,7 @@ class client:
         #create the datagram socket
         self.sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
         
+       
         #set timeout for multicast_socket
         self.sock.settimeout(2)
         
@@ -27,11 +29,15 @@ class client:
        
         #create  udp socket
         self.udp_sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-        
+
+         #set timeout for multicast_socket
+        self.udp_sock.settimeout(2)
         #bind udp socket
         self.udp_sock.bind(('',0))
    
     #sends the message through the udp socket
+    def setBlocking(self):
+        self.udp_sock.settimeout(None)
     
     def Send(self,message,address):
         message = message
@@ -84,58 +90,9 @@ class Request:
                     ####global variables###
                     
 MAX_SIZE = 15    #Max size of buffer
-clt_buffer = []  #The client buffer
-multicast_group = ('226.1.1.1',10000); 
-clnt = client(multicast_group) #initialation of client class
-reply_buffer = [] #Buffer that contains all the replies
-
-
-#finds in the reply buffer the dictionary that contains the key
-#and returns  length,reply and the index of the dictinary 
-#that contains the key
-
-def find_reply(key):
-    for i in range(len(reply_buffer)):
-        if(reply_buffer[i].get("key") == key):
-            buffer = reply_buffer[i].get("buffer")
-            lenght = reply_buffer[i].get("lenght")
-            #reply_sem.release()
-            return lenght,buffer,i
-    return -1,-1,-1
-
-
-#finds in the buffer the dictionary that contains the key
-#and returns the index of the dictinary that contain this key in 
-
-def findRequest(key):
-    
-    #reply_sem.acquire()
-    for i in range(len(reply_buffer)):
-        if(clt_buffer[i].get("key") == key):
-            return i
-    #reply_sem.release()
-    return -1
-        
-
-#finds in buffer if we have a duplicate
-
-def findDuplicateSend(svcid,length,buffer):
-    for i in range(len(clt_buffer)):
-        if(clt_buffer[i].get("svcid") == svcid):
-            if(clt_buffer[i].get("buffer") == buffer):
-                if(clt_buffer[i].get("len") == length):
-                    return True
-    return False
-
-#finds in reply_buffer if we have a duplicate
-def findDuplicateRec(key,length,buffer):
-    for i in range(len(reply_buffer)):
-        if(reply_buffer[i].get("key") == key):
-            if(reply_buffer[i].get("buffer") == buffer):
-                if(reply_buffer[i].get("lenght") == length):
-                    return True
-    
-    return False
+multicast_group = ('226.1.1.1',10000)
+reply_queue = queue.Queue(MAX_SIZE)
+reply_dict = {}
 
 
 #Makes the message that will send to server as request 
@@ -163,15 +120,19 @@ def unzip(data):
     x2 = data[4:8]
     length = int.from_bytes(x2,"big")
    # print (length)
-    buffer  = data[8:8+length]
+    buffer = data[8:8+length]
     
     #print(buffer)
     
-    return {"key":key,"lenght":length,"buffer":buffer}
+    return {
+        "key": key,
+        "length": length,
+        "buffer": buffer
+    }
 
 
 #Discovery of the server via multicast
-def multicastProtocol(message):
+def multicastProtocol(clnt, message):
     
     counter = 0
     print("Sending " + message + " in multicast")
@@ -196,7 +157,7 @@ def multicastProtocol(message):
 
 
 #sends the request to server and waits for acknolegment
-def sendWithAck(message,server,sem,key):
+def sendWithAck(message,server,clnt,key):
     
     counter = 0
     
@@ -204,15 +165,14 @@ def sendWithAck(message,server,sem,key):
     print(message)
     print("in server:")
     print(server)
-    reply_sem.acquire()
+
     clnt.Send(message,server)
-    reply_sem.release()
-    
     #look for responce to mesage
     
     while(counter <  2):
-        check = sem.acquire(blocking=True, timeout=2)
-        if(check == False):
+        try:
+            check = clnt.Read()
+        except socket.timeout:
             print('timed out in sending request_%d no more responses for Ack_%d'% (key, key))
             counter = counter + 1
             clnt.Send(message,server)
@@ -221,135 +181,93 @@ def sendWithAck(message,server,sem,key):
     
     if(counter == 2):
         print("server error in sending request_%d" % (key))
-        return -1
+        return False
     
-    return 1
+    return True
 
 
-    
-    
-def sendRequest(svcid,buffer,length):
-    
-    multicast_request = "RR_CLIENT_"
-    
-    svc_str = str(svcid)
-    
-    multicast_request += svc_str
-    
-    req = Request(svcid,buffer,length)
-    
-    if(len(clt_buffer) == MAX_SIZE):
-        return -1
-    
-    if(findDuplicateSend(svcid,length,buffer) == True):
-        return -1
-    
-    clt_buffer.append(req.asDict())
-    
-    send_msg = zip_b(req.getKey(),length,buffer)
-    
-    server = multicastProtocol(multicast_request)
-    
-    if(server == -1):
-        return-1
-    
-    print("multicast discovery succesful")
-    
-    ack = sendWithAck(send_msg,server,req.asDict().get("sem"),req.getKey())
-    
-    if(ack == -1):
-        return -1
-        
-    return req.getKey()
-
-
-#Tread that has a while(1) and reads the data that comes from server 
-
-class readThread(threading.Thread):
+class Reply():
     def __init__(self):
-        super(readThread,self).__init__()
-        
+        self.data = None
+        self.length = 0
+
+    def setData(self, data):
+        self.data = data
+
+    def setLength(self, length):
+        self.length = length
+
+
+class sendRequestThread(threading.Thread):
+    def __init__(self,request, reply):
+        threading.Thread.__init__(self)
+        self.clnt = client(multicast_group)
+        self.request = request
+        self.reply = reply
+
     def run(self):
-        while(1):
-            data,server = clnt.Read()
-            # if the read from server is an ack release the semaphore so 
-            # that we know for sure the server has our request
-            # and stop retransmit
-            try:
-                
-                new_data = data
-                ack = new_data[0:4].decode()
-                
-                if(ack == "Ack_"):
-                    key = int(new_data[4:len(new_data)])
-                    print("Received Akc_%d from server %s" % (key,server))
-                    index = findRequest(key)
-                    sem = clt_buffer[index].get("sem")
-                    sem.release()
-                else:
-                    dict_reply = unzip(data)
-                
-                    if(findDuplicateRec(dict_reply.get("key"),dict_reply.get("lenght"),dict_reply.get("buffer")) == False):
-                        print("Received relpy_%d from server %s" % (dict_reply.get("key"),server))    
-                        reply_buffer.append(dict_reply)
-                        index = findRequest(dict_reply.get('key'))
-                        clt_buffer.remove(clt_buffer[index])
-                        print("sending ACK_RECIVED in server")
-                        reply_sem.acquire()
-                        clnt.Send("Ack_recived".encode(),server)
-                        reply_sem.release()
-                    else:
-                        print("Received duplicate relpy_%d from server %s" % (dict_reply.get("key"),server))
-                        print("sending ACK_RECIVED in server :%s due to a duplicate" % (server))
-                        reply_sem.acquire()
-                        clnt.Send("Ack_recieved".encode(),server)
-                        reply_sem.release()
-                    
-                    
-            except UnicodeDecodeError:
-                
-                dict_reply = unzip(data)
-                
-                if(findDuplicateRec(dict_reply.get("key"),dict_reply.get("lenght"),dict_reply.get("buffer")) == False):
-                    print("Received relpy_%d from server %s" % (dict_reply.get("key"),server))    
-                    reply_buffer.append(dict_reply)
-                    index = findRequest(dict_reply.get('key'))
-                    clt_buffer.remove(clt_buffer[index])
-                    print("sending ACK_RECIVED in server")
-                    reply_sem.acquire()
-                    clnt.Send("Ack_recived".encode(),server)
-                    reply_sem.release()
-                else:
-                    print("Received duplicate relpy_%d from server %s" % (dict_reply.get("key"),server))
-                    print("sending ACK_RECIVED in server :%s due to a duplicate" % (server))
-                    reply_sem.acquire()
-                    clnt.Send("Ack_recieved".encode(),server)
-                    reply_sem.release()
+        multicast_request = "RR_CLIENT_"
 
-def getReply(reqid,block):    
-    
-    if(block == True):
-        buffer = -1
-        while(1):
-            lenght,buffer,index = find_reply(reqid)
-            if(buffer != -1):
-                reply_buffer.remove(reply_buffer[index])
-                break
-        return lenght,buffer
-    else:
-        lenght,buffer,index = find_reply(reqid)
-       
-        if(buffer != -1):
-                reply_buffer.remove(reply_buffer[index])
+        svc_str = str(self.request.svcid)
         
-        return lenght,buffer
+        multicast_request += svc_str
 
+        multicast_request += "_"
+        multicast_request += str(self.request.getKey())
 
+        server = multicastProtocol(self.clnt, multicast_request)
+        if (server == -1):
+            reply_dict[self.request.getKey()][0].release()
+            return -1
 
-#sem = threading.Semaphore(0)
-reply_sem = threading.Semaphore(1)
-thread = readThread()
-thread.start()
+        send_msg = zip_b(self.request.getKey(), self.request.length, self.request.buffer)
 
-  
-    
+        ack = sendWithAck(send_msg, server, self.clnt, self.request.getKey())
+        if (ack == False):
+            reply_dict[self.request.getKey()][0].release()
+            return -1
+
+        self.clnt.setBlocking()
+        data, server = self.clnt.Read()
+
+        dict_reply = unzip(data)
+        print("==============GOTREPLY==============")
+        print(data)
+
+        self.clnt.Send("ACK_RECEIVED".encode(), server)
+
+#        if (reply_dict[self.request.getKey()][1])
+        self.reply.setData(dict_reply['buffer'])
+        self.reply.setLength(dict_reply['length'])
+
+        reply_dict[self.request.getKey()][0].release()
+        """
+        if(findDuplicateRec(dict_reply.get("key"),dict_reply.get("lenght"),dict_reply.get("buffer")) == False):
+            print("Received relpy_%d from server %s" % (dict_reply.get("key"),server))    
+            reply_buffer.append(dict_reply)
+            print("sending ACK_RECIVED in server")
+        else:
+            print("Received duplicate relpy_%d from server %s" % (dict_reply.get("key"),server))
+            clnt.Send("Ack_recieved".encode(),server)
+        """
+
+def getReply(reqid, block):
+    if (block == True):
+        reply_dict[reqid][0].acquire()
+    else:
+        if (reply_dict[reqid][0].locked()):
+            return -1
+
+    reply = reply_dict[reqid][1]
+
+    del reply_dict[reqid]
+
+    return reply.data, reply.length
+
+def sendRequest(svcid,buffer,length):
+    req = Request(svcid,buffer,length)
+    rep = Reply()
+    reply_dict[req.getKey()] = (threading.Semaphore(0), Reply())
+    sendRequestThrd = sendRequestThread(req, rep)
+    sendRequestThrd.start()
+    return req.getKey()

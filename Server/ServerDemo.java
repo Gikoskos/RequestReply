@@ -14,12 +14,14 @@ public class ServerDemo {
                 if (data != null) {
                     System.out.println("request id from app = " + data.getRequestId());
                     ByteBuffer buff = ByteBuffer.wrap(data.getData());
-                    int int_data = buff.getInt();
+                    long int_data = buff.getLong();
                     System.out.println("data from app = " + int_data);
 
                     Thread.sleep(4000);
                     int x = 1;
                     srv.sendReply(data.getRequestId(), ByteBuffer.allocate(4).putInt(x).array());
+                } else {
+                    System.out.println("!!!getRequest failed!!!");
                 }
             }
         } catch (Exception e) {

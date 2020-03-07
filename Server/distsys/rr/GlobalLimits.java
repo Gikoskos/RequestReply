@@ -8,5 +8,6 @@ class GlobalLimits {
                             DGRAM_BIG_LEN = 512,
                             SOCKET_TIMEOUT = 2 * 1000,
                             SEND_REPLY_TRIES = 3,
-                            GET_REQUEST_TRIES = 3;
+                            GET_REQUEST_TRIES = 3,
+                            INVALID_PACKET_ID = -1;
 }

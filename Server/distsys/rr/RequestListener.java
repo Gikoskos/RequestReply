@@ -1,10 +1,12 @@
 package distsys.rr;
 
 import java.io.IOException;
-import java.util.regex.*;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-public class RequestListener extends Thread {
-    private static final Pattern mcastHeaderPattern = Pattern.compile("^RR_CLIENT_(\\d{1,4})");
+class RequestListener extends Thread {
+    private static final Pattern mcastHeaderPattern = Pattern.compile("^RR_CLIENT_(\\d{1,4})_(\\d{1,9})");
     private MulticastServer mcastServer;
     private Matcher mcastHeaderMatcher;
 
@@ -15,7 +17,7 @@ public class RequestListener extends Thread {
     private MulticastPacket getValidMulticastPacket() {
         MulticastPacket mpack = null;
 
-        System.out.println("Listening for multicast packets...");
+        Dbg.purple("Listening for multicast packets...");
 
         while (mpack == null) {
             try {
@@ -23,9 +25,11 @@ public class RequestListener extends Thread {
                 this.mcastHeaderMatcher = mcastHeaderPattern.matcher(mpack.getString());
                 
                 if (this.mcastHeaderMatcher.matches()) {
-                    System.out.println("VALID MESSAGE BY " + mpack.getAddress().getHostName() + ": " + mpack.getString());
+                    Dbg.purple("VALID MESSAGE BY " + mpack.getAddress().getHostName() + ": " + mpack.getString());
+                    mpack.setSvcid(Integer.parseInt(this.mcastHeaderMatcher.group(1)));
+                    mpack.setNetworkid(Integer.parseInt(this.mcastHeaderMatcher.group(2)));
                 } else {
-                    System.out.println("INVALID MESSAGE BY " + mpack.getAddress().getHostName() + ": " + mpack.getString());
+                    Dbg.purple("INVALID MESSAGE BY " + mpack.getAddress().getHostName() + ": " + mpack.getString());
                     mpack = null;
                 }
             } catch (IOException e) {
@@ -40,16 +44,12 @@ public class RequestListener extends Thread {
         while (true) {
             MulticastPacket mpack = this.getValidMulticastPacket();
 
-            int svcid = Integer.parseInt(this.mcastHeaderMatcher.group(1));
+            Dbg.purple("RequestListener got multicast request with service id " + mpack.getSvcid() + " networkId " + mpack.getNetworkid());
 
-            System.out.println("RequestListener got multicast request with service id " + svcid);
-            if (ServiceHandler.exists(svcid)) {
-                try {
-                    PacketBuffer.insert(new ProtocolPacket(svcid, mpack.getAddress(), mpack.getPort()));
-                    RRServer.availableRequest.release();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
+            try {
+                Queues.multicastPacketQueue.put(mpack);
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
     }

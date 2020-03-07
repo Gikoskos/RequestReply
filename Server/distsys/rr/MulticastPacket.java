@@ -6,6 +6,7 @@ import java.net.*;
 class MulticastPacket {
     private InetAddress addr;
     private int port;
+    private int svcid, networkid;
     private String msg;
     private byte[] buff;
 
@@ -16,10 +17,6 @@ class MulticastPacket {
         this.port = port;
     }
 
-    public InetAddress getAddress() {
-        return this.addr;
-    }
-
     public String getString() {
         return this.msg;
     }
@@ -28,7 +25,27 @@ class MulticastPacket {
         return this.buff;
     }
 
+    public InetAddress getAddress() {
+        return this.addr;
+    }
+
     public int getPort() {
         return this.port;
+    }
+
+    public int getSvcid() {
+        return svcid;
+    }
+
+    public void setSvcid(int svcid) {
+        this.svcid = svcid;
+    }
+
+    public int getNetworkid() {
+        return networkid;
+    }
+
+    public void setNetworkid(int networkid) {
+        this.networkid = networkid;
     }
 }
