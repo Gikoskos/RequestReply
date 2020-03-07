@@ -13,6 +13,7 @@ public class RRServer {
     private final ExecutorService replyPool;
 
     public RRServer(final int multicastPort, final String multicastAddress) throws Exception {
+        System.out.println("On RRServer!");
         availableRequest.drainPermits();
         availableReply.drainPermits();
 

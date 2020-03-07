@@ -42,9 +42,10 @@ public class RequestListener extends Thread {
 
             int svcid = Integer.parseInt(this.mcastHeaderMatcher.group(1));
 
+            System.out.println("RequestListener got multicast request with service id " + svcid);
             if (ServiceHandler.exists(svcid)) {
                 try {
-                    new ProtocolPacket(svcid, mpack.getAddress(), mpack.getPort());
+                    PacketBuffer.insert(new ProtocolPacket(svcid, mpack.getAddress(), mpack.getPort()));
                     RRServer.availableRequest.release();
                 } catch (Exception e) {
                     e.printStackTrace();

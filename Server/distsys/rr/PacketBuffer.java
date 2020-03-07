@@ -84,7 +84,11 @@ class PacketBuffer {
         wLock();
         for (int i = 0; i < packetBuffer.length; i++) {
             //check if we have a duplicate
-            if (packetBuffer[i].getNetworkId() == netid && packetid != packetBuffer[i].getPacketId()) {
+            if (
+                packetBuffer[i] != null &&
+                packetBuffer[i].getNetworkId() == netid &&
+                packetid != packetBuffer[i].getPacketId()
+               ) {
 
                 //discard the packet that is at an earlier stage of processing
                 if (packet.getState().compareTo(packetBuffer[i].getState()) >= 0) {

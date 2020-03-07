@@ -3,6 +3,8 @@ package distsys.rr;
 import java.io.IOException;
 import java.net.*;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Enumeration;
 
 class MulticastServer {
     private final int port;
@@ -14,11 +16,21 @@ class MulticastServer {
         this.port = port;
         this.address = address;
 
+        Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+        NetworkInterface eth0Interface = null;
+
+        for (NetworkInterface inf : Collections.list(interfaces)) {
+            if (inf.getName() == "eth0") {
+                eth0Interface = inf;
+                break;
+            }
+        }
+
         this.group = InetAddress.getByName(this.address);
         this.sock = new MulticastSocket(this.port);
 
         this.sock.setLoopbackMode(true);
-        this.sock.joinGroup(this.group);
+        this.sock.joinGroup(new InetSocketAddress(this.group, this.port), eth0Interface);
     }
 
     public MulticastPacket listen() throws IOException {

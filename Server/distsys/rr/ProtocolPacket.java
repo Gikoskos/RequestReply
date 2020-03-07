@@ -64,14 +64,14 @@ class ProtocolPacket {
     public void deserializeRequestBuffer(byte[] buff) {
         ByteBuffer buffPacket = ByteBuffer.wrap(buff);
 
+        buffPacket.order(ByteOrder.BIG_ENDIAN);
         this.networkid = buffPacket.getInt(0);
         this.requestlen = buffPacket.getInt(4);
 
         this.reqbuff = new byte[this.requestlen];
 
-        buffPacket.get(this.reqbuff, 8, this.requestlen);
-
-        System.out.println("Deserialized packet (" + this.networkid + ", " + this.requestlen + ", " + (new String(this.reqbuff)) + ")");
+        buffPacket.get(this.reqbuff);
+        System.out.println("Deserialized packet (" + this.networkid + ", " + this.requestlen  + ")");
     }
 
     public byte[] getRequestBuffer() {

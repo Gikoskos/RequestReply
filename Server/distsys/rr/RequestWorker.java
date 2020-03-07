@@ -29,7 +29,10 @@ class RequestWorker implements Runnable {
                 break;
             }
 
+            
             ProtocolPacket arrived = PacketBuffer.getPacket(RequestState.ARRIVED);
+            
+            System.out.println("RequestWorker " + id + " assigned job!");
 
             DatagramPacket packetACK = new DatagramPacket(msgACK, msgACK.length, arrived.getAddress(), arrived.getPort());
 
@@ -40,6 +43,7 @@ class RequestWorker implements Runnable {
                 break;
             }
 
+            System.out.println("RequestWorker " + id + " sent ACK!");
             DatagramPacket packetRequest = new DatagramPacket(buffRequest, buffRequest.length);
 
             try {
@@ -48,6 +52,7 @@ class RequestWorker implements Runnable {
                 e.printStackTrace();
                 break;
             }
+            System.out.println("RequestWorker " + id + " received packet with data " + packetRequest.getLength());
 
             arrived.deserializeRequestBuffer(Arrays.copyOfRange(buffRequest, 0, packetRequest.getLength()));
 
@@ -56,6 +61,16 @@ class RequestWorker implements Runnable {
             }
 
             arrived.setPort(packetRequest.getPort());
+            byte[] shortACK = ("ACK_" + arrived.getNetworkId()).getBytes();
+
+            DatagramPacket shortpacketACK = new DatagramPacket(shortACK, shortACK.length, arrived.getAddress(), arrived.getPort());
+
+            try {
+                this.sock.send(shortpacketACK);
+            } catch (IOException e) {
+                e.printStackTrace();
+                break;
+            }
 
             ServiceHandler.releaseServiceRequest(arrived.getServiceId());
         }

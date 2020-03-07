@@ -244,7 +244,7 @@ class readThread(threading.Thread):
                 ack = new_data[0:4]
                 key = int(new_data[4:len(new_data)])
                 
-                if(ack == "Ack_"):
+                if(ack == "ACK_"):
                     index = findRequest(key)
                     sem = clt_buffer[index].get("sem")
                     sem.release()
@@ -287,7 +287,7 @@ reply_sem = threading.Semaphore(1)
 thread = readThread()
 thread.start()
 
-key = sendRequest(44,55376257,8)
+key = sendRequest(44,55376257,4)
 
 if(key != -1):
 
