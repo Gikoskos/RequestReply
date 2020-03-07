@@ -11,7 +11,7 @@ class RequestWorker implements Runnable {
 
     public RequestWorker() throws Exception {
         sock = new DatagramSocket();
-
+        sock.setSoTimeout(GlobalLimits.SOCKET_TIMEOUT);
         id = cnt++;
 
     }
@@ -19,7 +19,8 @@ class RequestWorker implements Runnable {
     public void run() {
         System.out.println("RequestWorker " + id + " started");
         byte[] msgACK = "RR_SERVER_ACK".getBytes();
-        byte[] buffRequest = new byte[GlobalLimits.DGRAM_BIG_LEN];
+        byte[] buffReceive = new byte[GlobalLimits.DGRAM_BIG_LEN];
+        DatagramPacket dgram = new DatagramPacket(msgACK, msgACK.length);
 
         while (true) {
             try {
@@ -34,39 +35,65 @@ class RequestWorker implements Runnable {
             
             System.out.println("RequestWorker " + id + " assigned job!");
 
-            DatagramPacket packetACK = new DatagramPacket(msgACK, msgACK.length, arrived.getAddress(), arrived.getPort());
 
-            try {
-                this.sock.send(packetACK);
-            } catch (IOException e) {
-                e.printStackTrace();
+            dgram.setAddress(arrived.getAddress());
+            dgram.setPort(arrived.getPort());
+            System.out.println("RequestWorker " + id + " got port " + dgram.getPort());
+
+            int i;
+            for (i = 0; i < GlobalLimits.GET_REQUEST_TRIES; i++) {
+
+                try {
+                    this.sock.send(dgram);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    break;
+                }
+                System.out.println("RequestWorker " + id + " sent ACK!");
+
+                dgram.setData(buffReceive);
+                dgram.setLength(buffReceive.length);
+
+                try {
+                    this.sock.receive(dgram);
+                } catch (SocketTimeoutException e) {
+                    System.out.println("RequestWorker " + id + " request timed out!");
+                    dgram.setAddress(arrived.getAddress());
+                    dgram.setPort(arrived.getPort());
+                    dgram.setData(msgACK);
+                    dgram.setLength(msgACK.length);    
+                    continue;
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    return;
+                }
+
                 break;
             }
 
-            System.out.println("RequestWorker " + id + " sent ACK!");
-            DatagramPacket packetRequest = new DatagramPacket(buffRequest, buffRequest.length);
-
-            try {
-                this.sock.receive(packetRequest);
-            } catch (IOException e) {
-                e.printStackTrace();
-                break;
-            }
-            System.out.println("RequestWorker " + id + " received packet with data " + packetRequest.getLength());
-
-            arrived.deserializeRequestBuffer(Arrays.copyOfRange(buffRequest, 0, packetRequest.getLength()));
-
-            if (PacketBuffer.checkDuplicates(arrived)) {
+            if (i == GlobalLimits.GET_REQUEST_TRIES) {
+                //@TODO: clear buffer
+                System.out.println("RequestWorker " + id + " maxed on timeouts for request!");
                 continue;
             }
 
-            arrived.setPort(packetRequest.getPort());
+            System.out.println("RequestWorker " + id + " received packet with data " + dgram.getLength());
+
+            arrived.deserializeRequestBuffer(Arrays.copyOfRange(buffReceive, 0, dgram.getLength()));
+
+            if (PacketBuffer.checkDuplicates(arrived)) {
+                System.out.println("Found duplicate!");
+                continue;
+            }
+
+            arrived.setPort(dgram.getPort());
             byte[] shortACK = ("ACK_" + arrived.getNetworkId()).getBytes();
 
-            DatagramPacket shortpacketACK = new DatagramPacket(shortACK, shortACK.length, arrived.getAddress(), arrived.getPort());
+            dgram.setData(shortACK);
+            dgram.setLength(shortACK.length);
 
             try {
-                this.sock.send(shortpacketACK);
+                this.sock.send(dgram);
             } catch (IOException e) {
                 e.printStackTrace();
                 break;

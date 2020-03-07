@@ -6,6 +6,7 @@ class GlobalLimits {
                             MAX_SERVICES = 64,
                             DGRAM_LEN = 32,
                             DGRAM_BIG_LEN = 512,
-                            REPLY_TIMEOUT = 2,
-                            SEND_REPLY_TRIES = 3;
+                            SOCKET_TIMEOUT = 2 * 1000,
+                            SEND_REPLY_TRIES = 3,
+                            GET_REQUEST_TRIES = 3;
 }

@@ -10,7 +10,7 @@ class ReplyWorker implements Runnable {
 
     public ReplyWorker() throws Exception {
         sock = new DatagramSocket();
-        sock.setSoTimeout(GlobalLimits.REPLY_TIMEOUT * 1000);
+        sock.setSoTimeout(GlobalLimits.SOCKET_TIMEOUT);
         id = cnt++;
     }
 
@@ -44,15 +44,18 @@ class ReplyWorker implements Runnable {
                 try {
                     this.sock.receive(recvAck);
                 } catch (SocketTimeoutException e) {
+                    System.out.println("ReplyWorker " + id + " ACK for reply timeout");
                     continue;
                 } catch (IOException e) {
                     e.printStackTrace();
                     return;
                 }
 
+                System.out.println("ReplyWorker " + id + " got ACK for reply");
                 break;
             }
 
+            //remove in all cases
             PacketBuffer.remove(packet.getPacketId());
         }
     }

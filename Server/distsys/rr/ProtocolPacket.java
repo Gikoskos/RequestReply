@@ -4,6 +4,8 @@ import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
+
 
 class ProtocolPacket {
     @SuppressWarnings("unused")
@@ -68,9 +70,8 @@ class ProtocolPacket {
         this.networkid = buffPacket.getInt(0);
         this.requestlen = buffPacket.getInt(4);
 
-        this.reqbuff = new byte[this.requestlen];
+        this.reqbuff = Arrays.copyOfRange(buff, 8, buff.length);
 
-        buffPacket.get(this.reqbuff);
         System.out.println("Deserialized packet (" + this.networkid + ", " + this.requestlen  + ")");
     }
 
@@ -86,9 +87,9 @@ class ProtocolPacket {
         ByteBuffer buffPacket = ByteBuffer.allocate(8 + buff.length);
 
         buffPacket.order(ByteOrder.BIG_ENDIAN);
-        buffPacket.putInt(0, this.networkid);
-        buffPacket.putInt(4, buff.length);
-        buffPacket.put(buff, 8, buff.length);
+        buffPacket.putInt(this.networkid);
+        buffPacket.putInt(buff.length);
+        buffPacket.put(buff);
 
         this.repbuff = buffPacket.array();
     }
