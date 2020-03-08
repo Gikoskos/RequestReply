@@ -1,13 +1,12 @@
 package distsys.rr;
 
-import java.util.concurrent.locks.*;
+//import java.util.concurrent.locks.*;
 import java.util.Hashtable;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.ArrayBlockingQueue;
 
 class ServiceHandler {
     private static final int[] services = new int[GlobalLimits.MAX_SERVICES];
-    private static final ReentrantReadWriteLock services_rwl = new ReentrantReadWriteLock();
+    //private static final ReentrantReadWriteLock services_rwl = new ReentrantReadWriteLock();
     private static final Hashtable<Integer, ArrayBlockingQueue<RequestData>> unansweredRequests = new Hashtable<Integer, ArrayBlockingQueue<RequestData>>();
     private static int registered_cnt = 0;
 

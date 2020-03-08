@@ -2,7 +2,6 @@ package distsys.rr;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
 
 public class RRServer {
     private final RequestListener rListener;
