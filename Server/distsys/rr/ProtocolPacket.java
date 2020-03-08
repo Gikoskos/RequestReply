@@ -106,6 +106,6 @@ class ProtocolPacket {
         buffPacket.putInt(buff.length);
         buffPacket.put(buff);
 
-        this.repbuff = Arrays.copyOfRange(buffPacket.array(), 0, buffPacket.array().length);
+        this.repbuff = buffPacket.array();
     }
 }

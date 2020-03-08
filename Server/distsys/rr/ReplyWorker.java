@@ -33,13 +33,16 @@ class ReplyWorker implements Runnable {
 
             ProtocolPacket packet = PacketBuffer.getPacket(reply.getRequestId());
 
-            Dbg.yellow("ReplyWorker " + id + " running on " + this.sock.getLocalPort());
-            DatagramPacket packetReply = new DatagramPacket(reply.getData(), reply.getData().length, packet.getAddress(), packet.getPort());
-
-            ByteBuffer buff = ByteBuffer.wrap(reply.getData());
-            int int_data = buff.getInt();
-            Dbg.yellow("ReplyWorker " + id + " key = " + reply.getRequestId());
             packet.serializeReplyBuffer(reply.getData());
+
+            DatagramPacket packetReply = new DatagramPacket(
+                packet.getReplyBuffer(),
+                packet.getReplyBuffer().length,
+                packet.getAddress(),
+                packet.getPort()
+            );
+
+            Dbg.yellow("ReplyWorker " + id + " key = " + reply.getRequestId());
 
             for (int i = 0; i < GlobalLimits.SEND_REPLY_TRIES; i++) {
                 try {
@@ -50,8 +53,8 @@ class ReplyWorker implements Runnable {
                 }
 
                 DatagramPacket recvAck = new DatagramPacket(
-                    packet.getReplyBuffer(),
-                    packet.getReplyBuffer().length
+                    buffAck,
+                    buffAck.length
                 );
 
                 try {
